@@ -10,6 +10,9 @@ public record CouponResponse(
         int totalQuantity,
         int issuedQuantity,
         int remainingQuantity,
+        int discountAmount,
+        LocalDateTime issueStartedAt,
+        LocalDateTime issueExpiredAt,
         LocalDateTime createdAt
 ) {
     public static CouponResponse from(Coupon coupon) {
@@ -19,6 +22,9 @@ public record CouponResponse(
                 coupon.getTotalQuantity(),
                 coupon.getIssuedQuantity(),
                 coupon.getRemainingQuantity(),
+                coupon.getDiscountAmount(),
+                coupon.getIssueStartedAt(),
+                coupon.getIssueExpiredAt(),
                 coupon.getCreatedAt()
         );
     }

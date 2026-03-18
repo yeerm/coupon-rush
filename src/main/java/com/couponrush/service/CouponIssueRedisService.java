@@ -4,8 +4,12 @@ import com.couponrush.common.exception.BusinessException;
 import com.couponrush.common.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -14,8 +18,13 @@ public class CouponIssueRedisService {
 
     private static final String COUPON_STOCK_KEY = "coupon:stock:%d";
     private static final String COUPON_ISSUED_KEY = "coupon:issued:%d";
+    private static final String COUPON_LOCK_KEY = "coupon:lock:%d";
+    private static final long LOCK_WAIT_TIME = 3L;
+    private static final long LOCK_LEASE_TIME = 5L;
 
     private final StringRedisTemplate redisTemplate;
+    private final RedissonClient redissonClient;
+
 
     /**
      * Redis에서 쿠폰 재고를 감소시키고 발급 가능 여부를 반환한다.
@@ -59,5 +68,29 @@ public class CouponIssueRedisService {
         String stockKey = COUPON_STOCK_KEY.formatted(couponId);
         String value = redisTemplate.opsForValue().get(stockKey);
         return value != null ? Integer.parseInt(value) : -1;
+    }
+
+    /**
+     * Redisson 분산락을 획득하고 action을 실행한다.
+     * 락 획득 실패 시 LOCK_FAILED 예외를 던진다.
+     */
+    public void executeWithLock(Long couponId, Runnable action) {
+        String lockKey = COUPON_LOCK_KEY.formatted(couponId);
+        RLock lock = redissonClient.getLock(lockKey);
+
+        try {
+            boolean acquired = lock.tryLock(LOCK_WAIT_TIME, LOCK_LEASE_TIME, TimeUnit.SECONDS);
+            if (!acquired) {
+                throw new BusinessException(ErrorCode.LOCK_FAILED);
+            }
+            action.run();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(ErrorCode.LOCK_FAILED);
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
     }
 }

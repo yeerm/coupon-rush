@@ -28,19 +28,41 @@ public class Coupon {
     @Column(name = "issued_quantity", nullable = false)
     private int issuedQuantity;
 
+    @Column(name = "discount_amount", nullable = false)
+    private int discountAmount;
+
+    @Column(name = "issue_started_at", nullable = false)
+    private LocalDateTime issueStartedAt;
+
+    @Column(name = "issue_expired_at", nullable = false)
+    private LocalDateTime issueExpiredAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
     }
 
-    public static Coupon create(String name, int totalQuantity) {
+    @PreUpdate
+    protected void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public static Coupon create(String name, int totalQuantity, int discountAmount,
+                                LocalDateTime issueStartedAt, LocalDateTime issueExpiredAt) {
         Coupon coupon = new Coupon();
         coupon.name = name;
         coupon.totalQuantity = totalQuantity;
         coupon.issuedQuantity = 0;
+        coupon.discountAmount = discountAmount;
+        coupon.issueStartedAt = issueStartedAt;
+        coupon.issueExpiredAt = issueExpiredAt;
         return coupon;
     }
 

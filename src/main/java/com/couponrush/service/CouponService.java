@@ -16,12 +16,15 @@ public class CouponService {
 
     private final CouponRepository couponRepository;
 
+    // 쿠폰 생성
     @Transactional
     public CouponResponse createCoupon(CouponCreateRequest request) {
-        Coupon coupon = Coupon.create(request.name(), request.totalQuantity());
+        Coupon coupon = Coupon.create(request.name(), request.totalQuantity(),
+                request.discountAmount(), request.issueStartedAt(), request.issueExpiredAt());
         return CouponResponse.from(couponRepository.save(coupon));
     }
 
+    // 쿠폰 조회
     @Transactional(readOnly = true)
     public CouponResponse getCoupon(Long couponId) {
         Coupon coupon = couponRepository.findById(couponId)
