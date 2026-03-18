@@ -38,3 +38,7 @@ out/
 
 .env
 docker-compose.override.yml
+
+### DB, Redis, kafka 정보 보호
+#src/main/resources/application.yml
+#src/main/resources/application-local.yml
