@@ -3,9 +3,7 @@ package com.couponrush.event;
 import com.couponrush.service.CouponIssueRedisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.event.EventListener;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -15,7 +13,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @RequiredArgsConstructor
 public class CouponIssueEventListener {
 
-    private static final String TOPIC = "coupon-issued";
+    private static final String TOPIC = "coupon-issue";
 
     private final KafkaTemplate<String, CouponIssuedEvent> kafkaTemplate;
     private final CouponIssueRedisService couponIssueRedisService;
@@ -37,11 +35,25 @@ public class CouponIssueEventListener {
 
     /**
      * 쿠폰 발급 완료 이벤트를 Kafka로 발행
+     * - AFTER_COMMIT: DB 커밋 후에만 발행 → 롤백 시 Kafka 메시지 발행 안됨
+     * - kafkaTemplate.send()는 내부적으로 비동기 처리되므로 @Async 불필요
+     * - whenComplete 콜백으로 발행 성공/실패 확인
      */
-    @Async
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onCouponIssued(CouponIssuedEvent event) {
-        log.info("쿠폰 발급 이벤트 수신: couponIssueId={}, userId={}", event.couponIssueId(), event.userId());
-        kafkaTemplate.send(TOPIC, String.valueOf(event.userId()), event);
+        log.info("쿠폰 발급 이벤트 발행 시도: couponIssueId={}, userId={}", event.couponIssueId(), event.userId());
+        kafkaTemplate.send(TOPIC, String.valueOf(event.userId()), event)
+                .whenComplete((result, ex) -> {
+                    if (ex != null) {
+                        log.warn("Kafka 발행 실패: couponIssueId={}, userId={}, error={}",
+                                event.couponIssueId(), event.userId(), ex.getMessage());
+                    } else {
+                        log.info("Kafka 발행 성공: couponIssueId={}, topic={}, partition={}, offset={}",
+                                event.couponIssueId(),
+                                result.getRecordMetadata().topic(),
+                                result.getRecordMetadata().partition(),
+                                result.getRecordMetadata().offset());
+                    }
+                });
     }
 }
