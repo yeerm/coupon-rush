@@ -10,6 +10,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 @Slf4j
 @Service
@@ -49,6 +50,12 @@ public class CouponIssueRedisService {
         }
 
         // 발급 이력 추가
+        // TODO: [배치 동기화 미구현] Redis 장애로 add()가 실패하면 재고는 차감됐지만 발급 이력 Set에 userId가 없는
+        //  데이터 불일치 상태가 된다. 이 경우 동일 유저 재시도 시 isMember() 체크를 통과하지만,
+        //  DB의 UNIQUE 제약(uq_coupon_user)이 중복 발급을 최종 차단하고 rollbackStock()으로 재고를 복구한다.
+        //  단, Redis 복구 후에도 Set이 비어있는 상태가 지속될 수 있으므로
+        //  DB coupon_issues 테이블 기준으로 Redis Set(coupon:issued:{couponId})을 재동기화하는
+        //  배치 작업이 필요하다. (Spring Scheduler 또는 Redis 복구 트리거 연동)
         redisTemplate.opsForSet().add(issuedKey, String.valueOf(userId));
     }
 
@@ -71,10 +78,21 @@ public class CouponIssueRedisService {
     }
 
     /**
-     * Redisson 분산락을 획득하고 action을 실행한다.
+     * Redis 재고 선차감을 롤백한다. (DB 저장 실패 시 호출)
+     */
+    public void rollbackStock(Long couponId, Long userId) {
+        // 재고 1 증가 (재고 되돌리기)
+        redisTemplate.opsForValue().increment(COUPON_STOCK_KEY.formatted(couponId));
+        // 발급된 유저 목록에서 제거
+        redisTemplate.opsForSet().remove(COUPON_ISSUED_KEY.formatted(couponId), String.valueOf(userId));
+        log.warn("Redis 재고 롤백: couponId={}, userId={}", couponId, userId);
+    }
+
+    /**
+     * Redisson 분산락을 획득하고 action을 실행한 뒤 결과를 반환한다.
      * 락 획득 실패 시 LOCK_FAILED 예외를 던진다.
      */
-    public void executeWithLock(Long couponId, Runnable action) {
+    public <T> T executeWithLock(Long couponId, Supplier<T> action) {
         String lockKey = COUPON_LOCK_KEY.formatted(couponId);
         RLock lock = redissonClient.getLock(lockKey);
 
@@ -83,7 +101,7 @@ public class CouponIssueRedisService {
             if (!acquired) {
                 throw new BusinessException(ErrorCode.LOCK_FAILED);
             }
-            action.run();
+            return action.get();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new BusinessException(ErrorCode.LOCK_FAILED);
