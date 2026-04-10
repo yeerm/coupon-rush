@@ -31,4 +31,10 @@ public class CouponController {
     public ApiResponse<CouponResponse> getCoupon(@PathVariable Long couponId) {
         return ApiResponse.ok(couponService.getCoupon(couponId));
     }
+
+    @Operation(summary = "병목지점 테스트")
+    @GetMapping("/test")
+    public ApiResponse<String> test() {
+        return ApiResponse.ok(couponService.diagnoseBottleneck());
+    }
 }

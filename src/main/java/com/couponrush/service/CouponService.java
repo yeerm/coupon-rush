@@ -55,4 +55,47 @@ public class CouponService {
     public void evictCouponCache(Long couponId) {
         couponCacheService.evictCache(couponId);
     }
+
+    // ── IntelliJ Profiler 병목 탐지 테스트용 ──────────────────────────────────
+    // Profiler 실행 후 /api/v1/coupons/test 를 호출하면
+    // 플레임 그래프에서 어느 메서드가 CPU 시간을 얼마나 점유하는지 확인 가능
+    public String diagnoseBottleneck() {
+        validateInput();       // 빠름 (~0ms)
+        fetchFromDatabase();   // 느림 — I/O 시뮬레이션 (wall-clock 모드에서 두드러짐)
+        processData();         // 느림 — CPU 연산 집중 (CPU 모드에서 두드러짐)
+        buildResponse();       // 빠름 (~0ms)
+        return "bottleneck test complete";
+    }
+
+    // 빠른 입력 검증 시뮬레이션
+    private void validateInput() {
+        long sum = 0;
+        for (int i = 0; i < 1_000; i++) {
+            sum += i;
+        }
+    }
+
+    // 느린 DB 쿼리 시뮬레이션 — Thread.sleep은 Wall-clock 프로파일링에서 포착됨
+    // (CPU 프로파일링에서는 스레드가 대기 중이므로 보이지 않음)
+    private void fetchFromDatabase() {
+        try {
+            Thread.sleep(300);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    // CPU 집약적 연산 시뮬레이션 — CPU 프로파일링에서 두드러지게 나타남
+    private void processData() {
+        double result = 0;
+        for (int i = 0; i < 10_000_000; i++) {
+            result += Math.sqrt(i);
+        }
+    }
+
+    // 빠른 응답 생성 시뮬레이션
+    private void buildResponse() {
+        String.valueOf(System.currentTimeMillis());
+    }
+    // ──────────────────────────────────────────────────────────────────────────
 }
